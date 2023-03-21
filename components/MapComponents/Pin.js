@@ -1,78 +1,91 @@
-import { Text, View, SafeAreaView, StyleSheet, Pressable, TextInput, Dimensions,  Button, TouchableOpacity } from 'react-native';
+import { Text, View, SafeAreaView, StyleSheet, Pressable, TextInput, Dimensions,  Button, TouchableOpacity, Image } from 'react-native';
 import { useState, useEffect } from 'react';
 import MapView from 'react-native-maps'
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import * as Location from 'expo-location';
 import { Camera, CameraType } from 'expo-camera';
+import { useNavigation, useRoute } from "@react-navigation/native"
+import { supabase } from '../../env';
+import * as ImagePicker from 'expo-image-picker';
+
 
 const { width, height } = Dimensions.get('window');
 const ASPECT_RATIO = width / height;
 
 export default function Pin({ navigation }) {
-  const [item, setItem] = useState('');
-  const [snapshot, setSnapshot] = useState(null);
-  const [location, setLocation] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
-  const [permission, requestPermission] = Camera.useCameraPermissions();
+
+  const [ item, setItem ] = useState('');
+  const [ location, setLocation ] = useState(null);
+  const [ errorMsg, setErrorMsg ] = useState(null);
 	const [ region, setRegion ] = useState({
 		latitude: 37.78825,
 		longitude: -122.4324,
 		latitudeDelta: 0.0922,
 		longitudeDelta: 0.0421
 	})
+
+  //camera state variables
   const [cameraPermission, setCameraPermission] = useState(null);
   const [galleryPermission, setGalleryPermission] = useState(null);
-
   const [camera, setCamera] = useState(null);
   const [imageUri, setImageUri] = useState(null);
   const [type, setType] = useState(Camera.Constants.Type.back);
 
-  const permisionFunction = async () => {
-    // here is how you can get the camera permission
-    const cameraPermission = await Camera.requestCameraPermissionsAsync();
-
-    setCameraPermission(cameraPermission.status === 'granted');
-
-    const imagePermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-    console.log(imagePermission.status);
-
-    setGalleryPermission(imagePermission.status === 'granted');
-
-    if (
-      imagePermission.status !== 'granted' &&
-      cameraPermission.status !== 'granted'
-    ) {
-      alert('Permission for media access needed.');
-    }
+  const pin = async () => {
+    const { error } = await supabase
+   .from("pins")
+   .insert({
+    item: item,
+    latitude: region.latitude,
+    longitude: region.longitude,
+    imageUri: imageUri
+   })
   };
 
-  useEffect(() => {
-    permisionFunction();
-  }, []);
+//camera functions
+const permisionFunction = async () => {
+  // here is how you can get the camera permission
+  cameraPermission = await Camera.requestCameraPermissionsAsync();
 
-  const takePicture = async () => {
-    if (camera) {
-      const data = await camera.takePictureAsync(null);
-      console.log(data.uri);
-      setImageUri(data.uri);
-    }
-  };
+  setCameraPermission(cameraPermission.status === 'granted');
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-      presentationStyle: 0
-    });
+  const imagePermission = await ImagePicker.getMediaLibraryPermissionsAsync();
 
-    console.log(result);
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-    }
-  };
+  setGalleryPermission(imagePermission.status === 'granted');
 
+  if (
+    imagePermission.status !== 'granted' &&
+    cameraPermission.status !== 'granted'
+  ) {
+    alert('Permission for media access needed.');
+  }
+};
+
+useEffect(() => {
+  permisionFunction();
+}, []);
+
+const takePicture = async () => {
+  if (camera) {
+    const data = await camera.takePictureAsync(null);
+    setImageUri(data.uri);
+  }
+};
+
+const pickImage = async () => {
+  let result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.All,
+    allowsEditing: true,
+    aspect: [1, 1],
+    quality: 1,
+    presentationStyle: 0
+  });
+
+  if (!result.canceled) {
+    setImageUri(result.assets[0].uri);
+  }
+};
+// location functions
   useEffect(() => {
       (async () => {
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -93,15 +106,6 @@ export default function Pin({ navigation }) {
       text = JSON.stringify(location);
     }
 
-    function userLocation(location){
-      if (location === null){return;}
-      return {
-          latitude: location["coords"]["latitude"],
-          longitude: location["coords"]["longitude"],
-          latitudeDelta: ASPECT_RATIO * 0.001,
-          longitudeDelta: ASPECT_RATIO * 0.01,
-      }
-  }
 
   return (
     <SafeAreaView style={styles.view}>
@@ -119,7 +123,6 @@ export default function Pin({ navigation }) {
 				}}
 				onPress={(data, details = null) => {
 					// 'details' is provided when fetchDetails = true
-					console.log(data, details)
 					setRegion({
 						latitude: details.geometry.location.lat,
 						longitude: details.geometry.location.lng,
@@ -140,19 +143,46 @@ export default function Pin({ navigation }) {
 			/>
       
       <MapView style={styles.map} 
-        region={userLocation(location)}
+        region={{
+          latitude: region.latitude,
+          longitude: region.longitude,
+        }}
         showsUserLocation={true}
         followsUserLocation={true}> 
       </MapView>
 
+
+      <Camera
+          ref={(ref) => setCamera(ref)}
+          style={styles.camera}
+          type={type}
+        />
+      <Button title={'Take Picture'} onPress={takePicture} />
+      {/* <Button title={'Gallery'} onPress={pickImage} /> */}
+      {imageUri && <Image source={{ uri: imageUri }} style={{ flex: 1 }} />}
+
+      <Button title={'Push Pin'} onPress={() => pin()} />
       <Pressable
         onPress={() => navigation.navigate('Home')}>
         <Text>Back to Home</Text>
       </Pressable>
-
     </SafeAreaView>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const styles = StyleSheet.create({
   view:{
@@ -162,6 +192,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 	container: {
+      flex: 1,
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "space-evenly"
@@ -180,5 +211,19 @@ const styles = StyleSheet.create({
       width: width * 0.9,
 		  height: height * 0.15,
       flex: 2,
-    }
+    },
+    cameraContainer: {
+      flex: 1,
+      flexDirection: 'row',
+    },
+    camera: {
+      width: width * 0.9,
+      height: height * 0.2
+    },
+    button: {
+      flex: 0.1,
+      padding: 10,
+      alignSelf: 'flex-end',
+      alignItems: 'center',
+    },
 });
